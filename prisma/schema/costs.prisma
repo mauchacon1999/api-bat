@@ -1,0 +1,20 @@
+
+
+model CategoryCosts {
+  id Int @id @default(autoincrement())
+  name String
+  description String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  costs Costs[]
+}
+
+model Costs {
+  id Int @id @default(autoincrement())
+  categoryId Int
+  category CategoryCosts @relation(fields: [categoryId], references: [id])
+  amount Float
+  date DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
