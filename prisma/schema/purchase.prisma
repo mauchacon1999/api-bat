@@ -1,0 +1,28 @@
+ 
+model PurchaseStatus {
+  id        Int       @id @default(autoincrement())
+  name      String
+  description String?
+  purchases Purchase[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("purchase_statuses")
+}
+
+model Purchase {
+  id        Int       @id @default(autoincrement())
+  companyId Int       
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  statusId  Int
+  status    PurchaseStatus @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  amount    Float
+  date      DateTime
+  product   String?   
+  expenses  Expense[]
+  loans     Loan[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("purchases")
+}
