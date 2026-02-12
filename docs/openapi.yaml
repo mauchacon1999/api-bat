@@ -1,0 +1,732 @@
+openapi: 3.0.3
+info:
+  title: API Bait - Livestock Control
+  description: |
+    API para control de ganado multi-usuario. Cada usuario gestiona sus propias fincas, lotes, animales, gastos, préstamos y compras por compañía.
+
+    **Flujo principal**
+    - **Home:** Lista de fincas del usuario. Al elegir una finca se ve el lote activo, cantidad de animales y gastos del lote.
+    - **Gastos:** Se pueden asociar a una compra (y por tanto a una compañía); se recomienda usar compras que aún no estén vinculadas a otro lote.
+    - **Lotes:** Se agregan a una finca; el ganado se puede cargar de forma masiva (por cantidad) o animal por animal.
+    - **Préstamos:** Se agregan a un lote (efectivo).
+    - **Compañías:** Alta de compañía; listado de compras por compañía con filtro por estado y por "vinculada o no a un lote".
+  version: 1.0.0
+  contact:
+    name: API Bait
+
+servers:
+  - url: /api/v1
+    description: API base path (adjust host in deployment)
+
+tags:
+  - name: Farms
+    description: Fincas del usuario. El listado de fincas es la pantalla principal (home).
+  - name: Lots
+    description: Lotes de ganado por finca. Cada finca puede tener un lote activo visible desde "ver finca".
+  - name: Animals
+    description: Animales dentro de un lote. Alta individual o masiva por cantidad.
+  - name: Expenses
+    description: Gastos de un lote. Opcionalmente vinculados a una compra (compañía).
+  - name: Loans
+    description: Préstamos de efectivo asociados a un lote.
+  - name: Companies
+    description: Compañías (proveedores). Desde aquí se consultan las compras realizadas.
+  - name: Purchases
+    description: Compras por compañía. Filtros por estado y por si está vinculada a algún lote.
+  - name: Catalogs
+    description: Catálogos para listas desplegables (estados, categorías). Solo lectura.
+
+security:
+  - bearerAuth: []
+
+paths:
+  # =====================
+  # FARMS (Home = listado)
+  # =====================
+
+  /farms:
+    get:
+      tags: [Farms]
+      summary: Listar mis fincas
+      description: |
+        Devuelve las fincas del usuario autenticado. **Es el endpoint de home:** la lista de fincas es la pantalla principal.
+        En multi-usuario, solo se devuelven las fincas que pertenecen al usuario actual.
+      operationId: listFarms
+      responses:
+        '200':
+          description: Lista de fincas del usuario
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Farm' }
+    post:
+      tags: [Farms]
+      summary: Crear finca
+      description: Alta de una nueva finca. En multi-usuario se asocia al usuario autenticado.
+      operationId: createFarm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FarmCreate' }
+      responses:
+        '201':
+          description: Finca creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Farm' }
+        '400':
+          description: Datos inválidos
+
+  /farms/{farmId}:
+    get:
+      tags: [Farms]
+      summary: Detalle de finca
+      description: Devuelve una finca por ID. Debe pertenecer al usuario actual.
+      operationId: getFarm
+      parameters:
+        - $ref: '#/components/parameters/farmId'
+      responses:
+        '200':
+          description: Finca encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Farm' }
+        '404':
+          description: Finca no encontrada o sin permiso
+    patch:
+      tags: [Farms]
+      summary: Actualizar finca
+      description: Actualiza nombre, ubicación y/o teléfono de la finca.
+      operationId: updateFarm
+      parameters:
+        - $ref: '#/components/parameters/farmId'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FarmUpdate' }
+      responses:
+        '200':
+          description: Finca actualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Farm' }
+        '404':
+          description: Finca no encontrada o sin permiso
+
+  /farms/{farmId}/active-lot:
+    get:
+      tags: [Farms, Lots]
+      summary: Lote activo de la finca
+      description: |
+        Devuelve el lote en estado "activo" de esta finca. Es el recurso que se muestra al pulsar **"Ver finca"**: con él se puede mostrar cantidad de animales y gastos del lote.
+        Si la regla de negocio es un solo lote activo por finca, este endpoint devuelve ese único lote.
+      operationId: getFarmActiveLot
+      parameters:
+        - $ref: '#/components/parameters/farmId'
+      responses:
+        '200':
+          description: Lote activo (puede incluir resumen de animales y gastos según implementación)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LotWithSummary' }
+        '404':
+          description: No hay lote activo en esta finca
+
+  /farms/{farmId}/lots:
+    get:
+      tags: [Farms, Lots]
+      summary: Listar lotes de la finca
+      description: Lista todos los lotes de la finca. Opcionalmente se puede filtrar por estado (query `statusId`).
+      operationId: listFarmLots
+      parameters:
+        - $ref: '#/components/parameters/farmId'
+        - name: statusId
+          in: query
+          description: Filtrar por estado del lote (ID de lot_statuses)
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Lista de lotes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Lot' }
+
+  # =====================
+  # LOTS (crear lote, animales, gastos, préstamos)
+  # =====================
+
+  /farms/{farmId}/lots:
+    post:
+      tags: [Lots]
+      summary: Crear lote en la finca
+      description: Alta de un nuevo lote de ganado en la finca indicada. Se envían peso de ingreso, costo total, fecha y estado (p. ej. Activo o Pendiente).
+      operationId: createLot
+      parameters:
+        - $ref: '#/components/parameters/farmId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LotCreate' }
+      responses:
+        '201':
+          description: Lote creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Lot' }
+        '400':
+          description: Datos inválidos
+        '404':
+          description: Finca no encontrada o sin permiso
+
+  /lots/{lotId}:
+    get:
+      tags: [Lots]
+      summary: Detalle del lote
+      description: Devuelve el lote con datos básicos. Para cantidad de animales y gastos se pueden usar los sub-recursos o un resumen en la respuesta según implementación.
+      operationId: getLot
+      parameters:
+        - $ref: '#/components/parameters/lotId'
+      responses:
+        '200':
+          description: Lote encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Lot' }
+        '404':
+          description: Lote no encontrado o sin permiso
+
+  /lots/{lotId}/animals:
+    get:
+      tags: [Lots, Animals]
+      summary: Listar animales del lote
+      description: Lista los animales del lote. Permite mostrar la cantidad y el detalle de cada animal.
+      operationId: listLotAnimals
+      parameters:
+        - $ref: '#/components/parameters/lotId'
+      responses:
+        '200':
+          description: Lista de animales del lote
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Animal' }
+    post:
+      tags: [Lots, Animals]
+      summary: Agregar un animal al lote
+      description: Alta de un solo animal en el lote (peso, opcional sobrenombre, número de orden, estado).
+      operationId: createAnimal
+      parameters:
+        - $ref: '#/components/parameters/lotId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnimalCreate' }
+      responses:
+        '201':
+          description: Animal creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Animal' }
+        '400':
+          description: Datos inválidos
+        '404':
+          description: Lote no encontrado o sin permiso
+
+  /lots/{lotId}/animals/bulk:
+    post:
+      tags: [Lots, Animals]
+      summary: Agregar animales en masa
+      description: |
+        Crea varios animales en el lote de una vez. Se envía la **cantidad**; cada animal se crea con valores por defecto (peso 0 o configurable, estado por defecto).
+        Los animales quedan asociados al mismo lote.
+      operationId: createAnimalsBulk
+      parameters:
+        - $ref: '#/components/parameters/lotId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AnimalBulkCreate' }
+      responses:
+        '201':
+          description: Animales creados (cantidad creada o lista de IDs según implementación)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnimalBulkResult' }
+        '400':
+          description: Datos inválidos
+        '404':
+          description: Lote no encontrado o sin permiso
+
+  /lots/{lotId}/expenses:
+    get:
+      tags: [Lots, Expenses]
+      summary: Listar gastos del lote
+      description: Lista los gastos del lote. Incluye los que tienen compra asociada (compañía) y los que no.
+      operationId: listLotExpenses
+      parameters:
+        - $ref: '#/components/parameters/lotId'
+      responses:
+        '200':
+          description: Lista de gastos del lote
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Expense' }
+    post:
+      tags: [Lots, Expenses]
+      summary: Agregar gasto al lote
+      description: |
+        Crea un gasto asociado al lote. Opcionalmente se puede vincular a una **compra** (`purchaseId`); esa compra queda relacionada con este lote.
+        Buenas prácticas: usar compras que **no estén ya vinculadas a otro lote** (compras sin gastos asociados o con estado "no vinculada"), para que el estado sea coherente.
+      operationId: createExpense
+      parameters:
+        - $ref: '#/components/parameters/lotId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExpenseCreate' }
+      responses:
+        '201':
+          description: Gasto creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Expense' }
+        '400':
+          description: Datos inválidos
+        '404':
+          description: Lote o referencias no encontradas
+
+  /lots/{lotId}/loans:
+    get:
+      tags: [Lots, Loans]
+      summary: Listar préstamos del lote
+      description: Lista los préstamos de efectivo asociados al lote.
+      operationId: listLotLoans
+      parameters:
+        - $ref: '#/components/parameters/lotId'
+      responses:
+        '200':
+          description: Lista de préstamos del lote
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Loan' }
+    post:
+      tags: [Lots, Loans]
+      summary: Agregar préstamo al lote
+      description: Registra un préstamo de efectivo asociado al lote (monto total, monto en efectivo, descripción, fecha, estado y opcionalmente compra relacionada).
+      operationId: createLoan
+      parameters:
+        - $ref: '#/components/parameters/lotId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoanCreate' }
+      responses:
+        '201':
+          description: Préstamo creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Loan' }
+        '400':
+          description: Datos inválidos
+        '404':
+          description: Lote o compra no encontrados
+
+  # =====================
+  # COMPANIES & PURCHASES
+  # =====================
+
+  /companies:
+    get:
+      tags: [Companies]
+      summary: Listar compañías
+      description: Lista las compañías (proveedores) del usuario.
+      operationId: listCompanies
+      responses:
+        '200':
+          description: Lista de compañías
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Company' }
+    post:
+      tags: [Companies]
+      summary: Crear compañía
+      description: Alta de una nueva compañía (nombre, descripción, teléfono, dirección).
+      operationId: createCompany
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompanyCreate' }
+      responses:
+        '201':
+          description: Compañía creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Company' }
+        '400':
+          description: Datos inválidos
+
+  /companies/{companyId}:
+    get:
+      tags: [Companies]
+      summary: Detalle de compañía
+      description: Devuelve una compañía por ID.
+      operationId: getCompany
+      parameters:
+        - $ref: '#/components/parameters/companyId'
+      responses:
+        '200':
+          description: Compañía encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Company' }
+        '404':
+          description: Compañía no encontrada
+
+  /companies/{companyId}/purchases:
+    get:
+      tags: [Companies, Purchases]
+      summary: Listar compras de la compañía
+      description: |
+        Lista las compras realizadas a esta compañía. Permite filtrar por **estado de compra** (`statusId`) y por si la compra **está vinculada a algún lote** (`linkedToLot`).
+        - `statusId`: ID de purchase_statuses (ej. Pendiente, Pagada, Cancelada).
+        - `linkedToLot`: si es `false`, solo se devuelven compras que aún no tienen ningún gasto asociado (útil para elegir compras al agregar gastos a un lote).
+        "Vinculada a lote" se calcula: existe al menos un gasto (Expense) con ese purchaseId.
+      operationId: listCompanyPurchases
+      parameters:
+        - $ref: '#/components/parameters/companyId'
+        - name: statusId
+          in: query
+          description: Filtrar por estado de compra (ID de purchase_statuses)
+          schema: { type: integer }
+        - name: linkedToLot
+          in: query
+          description: Si es false, solo compras que no tienen ningún gasto asociado (no vinculadas a lote)
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Lista de compras de la compañía
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Purchase' }
+        '404':
+          description: Compañía no encontrada
+
+  # =====================
+  # CATALOGS (solo lectura)
+  # =====================
+
+  /catalogs/lot-statuses:
+    get:
+      tags: [Catalogs]
+      summary: Estados de lote
+      description: Catálogo para selects (Activo, Cerrado, Pendiente, etc.).
+      operationId: listLotStatuses
+      responses:
+        '200':
+          description: Lista de estados de lote
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CatalogItem' }
+
+  /catalogs/animal-statuses:
+    get:
+      tags: [Catalogs]
+      summary: Estados de animal
+      description: Catálogo para selects al agregar/editar animales.
+      operationId: listAnimalStatuses
+      responses:
+        '200':
+          description: Lista de estados de animal
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CatalogItem' }
+
+  /catalogs/expense-categories:
+    get:
+      tags: [Catalogs]
+      summary: Categorías de gasto
+      description: Catálogo para clasificar gastos (ej. Alimentación, Veterinaria, Transporte).
+      operationId: listExpenseCategories
+      responses:
+        '200':
+          description: Lista de categorías de gasto
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CatalogItem' }
+
+  /catalogs/expense-statuses:
+    get:
+      tags: [Catalogs]
+      summary: Estados de gasto
+      description: Catálogo para estados de gasto (Pendiente, Pagado, etc.).
+      operationId: listExpenseStatuses
+      responses:
+        '200':
+          description: Lista de estados de gasto
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CatalogItem' }
+
+  /catalogs/purchase-statuses:
+    get:
+      tags: [Catalogs]
+      summary: Estados de compra
+      description: Catálogo para filtrar compras por compañía (Pendiente, Pagada, Cancelada, etc.).
+      operationId: listPurchaseStatuses
+      responses:
+        '200':
+          description: Lista de estados de compra
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CatalogItem' }
+
+  /catalogs/loan-statuses:
+    get:
+      tags: [Catalogs]
+      summary: Estados de préstamo
+      description: Catálogo para estados de préstamo (Activo, Liquidado, etc.).
+      operationId: listLoanStatuses
+      responses:
+        '200':
+          description: Lista de estados de préstamo
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CatalogItem' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token del usuario autenticado. En multi-usuario todos los recursos se filtran por este usuario.
+
+  parameters:
+    farmId:
+      name: farmId
+      in: path
+      required: true
+      description: ID de la finca
+      schema: { type: integer }
+    lotId:
+      name: lotId
+      in: path
+      required: true
+      description: ID del lote
+      schema: { type: integer }
+    companyId:
+      name: companyId
+      in: path
+      required: true
+      description: ID de la compañía
+      schema: { type: integer }
+
+  schemas:
+    Farm:
+      type: object
+      description: Finca del usuario (pantalla principal = listado de fincas).
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: "Finca Norte" }
+        location: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    FarmCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        location: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+    FarmUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        location: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+
+    Lot:
+      type: object
+      description: Lote de ganado en una finca.
+      properties:
+        id: { type: integer }
+        farmId: { type: integer }
+        statusId: { type: integer }
+        status: { $ref: '#/components/schemas/CatalogItem' }
+        entryWeight: { type: number }
+        totalCost: { type: number }
+        date: { type: string, format: date }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    LotWithSummary:
+      allOf:
+        - { $ref: '#/components/schemas/Lot' }
+        - type: object
+          description: Incluye resumen para la vista "Ver finca".
+          properties:
+            animalCount: { type: integer, description: Cantidad de animales en el lote }
+            expenseTotal: { type: number, description: Suma de gastos del lote (opcional) }
+    LotCreate:
+      type: object
+      required: [statusId, entryWeight, totalCost, date]
+      properties:
+        statusId: { type: integer }
+        entryWeight: { type: number }
+        totalCost: { type: number }
+        date: { type: string, format: date }
+
+    Animal:
+      type: object
+      properties:
+        id: { type: integer }
+        lotId: { type: integer }
+        statusId: { type: integer }
+        status: { $ref: '#/components/schemas/CatalogItem' }
+        weight: { type: number }
+        nickname: { type: string, nullable: true }
+        sequenceNumber: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AnimalCreate:
+      type: object
+      required: [statusId, weight, sequenceNumber]
+      properties:
+        statusId: { type: integer }
+        weight: { type: number }
+        nickname: { type: string, nullable: true }
+        sequenceNumber: { type: integer }
+    AnimalBulkCreate:
+      type: object
+      required: [count]
+      properties:
+        count: { type: integer, minimum: 1, description: Número de animales a crear }
+        defaultWeight: { type: number, description: Peso por defecto (ej. 0) }
+        defaultStatusId: { type: integer, description: Estado por defecto para cada animal }
+    AnimalBulkResult:
+      type: object
+      properties:
+        count: { type: integer, description: Cantidad de animales creados }
+        animalIds: { type: array, items: { type: integer }, description: IDs creados (opcional) }
+
+    Expense:
+      type: object
+      description: Gasto de un lote. Opcionalmente vinculado a una compra (compañía).
+      properties:
+        id: { type: integer }
+        lotId: { type: integer }
+        purchaseId: { type: integer, nullable: true }
+        categoryId: { type: integer }
+        statusId: { type: integer }
+        amount: { type: number }
+        description: { type: string, nullable: true }
+        date: { type: string, format: date }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ExpenseCreate:
+      type: object
+      required: [categoryId, statusId, amount, date]
+      properties:
+        purchaseId: { type: integer, nullable: true, description: Si se envía, el gasto se vincula a esa compra (y compañía) }
+        categoryId: { type: integer }
+        statusId: { type: integer }
+        amount: { type: number }
+        description: { type: string, nullable: true }
+        date: { type: string, format: date }
+
+    Loan:
+      type: object
+      description: Préstamo de efectivo asociado a un lote.
+      properties:
+        id: { type: integer }
+        lotId: { type: integer }
+        purchaseId: { type: integer }
+        statusId: { type: integer }
+        amount: { type: number }
+        description: { type: string, nullable: true }
+        cashAmount: { type: number }
+        date: { type: string, format: date }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    LoanCreate:
+      type: object
+      required: [purchaseId, statusId, amount, cashAmount, date]
+      properties:
+        purchaseId: { type: integer }
+        statusId: { type: integer }
+        amount: { type: number }
+        description: { type: string, nullable: true }
+        cashAmount: { type: number }
+        date: { type: string, format: date }
+
+    Company:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CompanyCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+
+    Purchase:
+      type: object
+      description: Compra a una compañía. "Vinculada a lote" si existe al menos un gasto con este purchaseId.
+      properties:
+        id: { type: integer }
+        companyId: { type: integer }
+        statusId: { type: integer }
+        status: { $ref: '#/components/schemas/CatalogItem' }
+        amount: { type: number }
+        date: { type: string, format: date }
+        product: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CatalogItem:
+      type: object
+      description: Elemento de catálogo (estados, categorías). id + name + description opcional.
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string, nullable: true }
