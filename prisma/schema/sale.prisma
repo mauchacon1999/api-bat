@@ -1,0 +1,49 @@
+ 
+model LotSale {
+  id           Int               @id @default(autoincrement())
+  lotId        Int
+  lot          Lot                @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  date         DateTime
+  buyer        String
+  totalHeads   Int                 
+  notes        String?
+  animalSales  AnimalSale[]
+  operationClosure OperationClosure?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@map("lot_sales")
+}
+
+model AnimalSale {
+  id         Int     @id @default(autoincrement())
+  lotSaleId  Int
+  lotSale    LotSale @relation(fields: [lotSaleId], references: [id], onDelete: Restrict)
+  animalId   Int
+  animal     Animal @relation(fields: [animalId], references: [id], onDelete: Restrict)
+  exitWeight Float   // peso_salida
+  averageWeight Float? // promedio
+  date       DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("animal_sales")
+}
+
+ model OperationClosure {
+  id                  Int      @id @default(autoincrement())
+  lotSaleId           Int      @unique
+  lotSale             LotSale  @relation(fields: [lotSaleId], references: [id], onDelete: Restrict)
+  livestockPrice      Float    
+  finalLivestockWeight Float   
+  totalExpenseFarm    Float    
+  totalExpenseMediator Float   
+  loanAmountAtSale    Float    
+  profitFarm          Float    
+  profitMediator      Float    
+  initialInvestment   Float    
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("operation_closures")
+}

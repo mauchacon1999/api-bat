@@ -1,0 +1,26 @@
+
+model AnimalStatus {
+  id        Int      @id @default(autoincrement())
+  name      String
+  description String?
+  animals   Animal[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@map("animal_statuses")
+}
+
+model Animal {
+  id             Int          @id @default(autoincrement())
+  lotId          Int
+  lot            Lot          @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  statusId       Int
+  status         AnimalStatus @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  weight         Float
+  nickname       String?
+  sequenceNumber Int         
+  animalSales    AnimalSale[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@map("animals")
+}

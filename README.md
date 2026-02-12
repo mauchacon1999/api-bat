@@ -23,7 +23,92 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository. This API supports a **livestock control** domain (farms, lots, animals, purchases, expenses, loans, and sales).
+
+---
+
+## Database schema (Prisma)
+
+The data model is **normalized** (1NF–3NF), uses **English** naming, and follows consistent conventions. Tables are mapped to `snake_case` plural names in PostgreSQL via `@@map`.
+
+### Domain overview
+
+| Domain   | Models / concepts |
+|--------|--------------------|
+| Farm   | `Farm` (finca), `Lot` (lote), `LotStatus` |
+| Animal | `Animal`, `AnimalStatus` (per-lot animals with weight, nickname, sequence) |
+| Vendor | `Company` (empresa / seller) |
+| Purchases | `Purchase`, `PurchaseStatus` (per company, with optional product) |
+| Expenses | `Expense`, `ExpenseCategory`, `ExpenseStatus` (per lot, optional link to purchase) |
+| Costs  | `Cost`, `CostCategory` (general costs, not tied to lot/purchase) |
+| Loans  | `Loan`, `LoanStatus` (linked to purchase and lot) |
+| Sales  | `LotSale`, `AnimalSale`, `OperationClosure` (lot sale, per-animal sale, closure snapshot) |
+| App    | `User` |
+
+### Naming conventions
+
+- **Models:** PascalCase, singular (`Farm`, `Lot`, `Animal`, `Expense`, `Purchase`, etc.).
+- **Fields:** camelCase (`entryWeight`, `totalHeads`, `createdAt`).
+- **Foreign keys:** `[entity]Id` (e.g. `farmId`, `lotId`, `companyId`, `statusId`).
+- **DB tables:** `@@map("snake_case_plural")` (e.g. `farms`, `lot_sales`, `operation_closures`).
+
+### Model ↔ table mapping
+
+| Prisma model       | DB table              |
+|--------------------|------------------------|
+| Farm               | `farms`                |
+| LotStatus          | `lot_statuses`        |
+| Lot                | `lots`                 |
+| AnimalStatus       | `animal_statuses`      |
+| Animal             | `animals`              |
+| Company            | `companies`            |
+| PurchaseStatus     | `purchase_statuses`    |
+| Purchase           | `purchases`            |
+| ExpenseCategory    | `expense_categories`   |
+| ExpenseStatus      | `expense_statuses`    |
+| Expense            | `expenses`             |
+| CostCategory       | `cost_categories`     |
+| Cost               | `costs`                |
+| LoanStatus         | `loan_statuses`        |
+| Loan               | `loans`                |
+| LotSale            | `lot_sales`            |
+| AnimalSale         | `animal_sales`         |
+| OperationClosure   | `operation_closures`   |
+| User               | `users`                |
+
+### Schema files (multi-file)
+
+- `prisma/schema/farm.prisma` – Farm, LotStatus, Lot
+- `prisma/schema/animal.prisma` – AnimalStatus, Animal
+- `prisma/schema/company.prisma` – Company
+- `prisma/schema/purchase.prisma` – PurchaseStatus, Purchase
+- `prisma/schema/expenses.prisma` – ExpenseCategory, ExpenseStatus, Expense
+- `prisma/schema/costs.prisma` – CostCategory, Cost
+- `prisma/schema/loan.prisma` – LoanStatus, Loan
+- `prisma/schema/sale.prisma` – LotSale, AnimalSale, OperationClosure
+- `prisma/schema/user.prisma` – User
+
+### Design notes
+
+- **Expense:** Always has `lotId`; `purchaseId` is optional (expense can be lot-only or tied to a purchase).
+- **OperationClosure:** 1:1 with `LotSale`; stores snapshot totals (farm/mediator expenses, profits, loan at sale, initial investment) for audit/history.
+- **Status tables:** One per entity (LotStatus, AnimalStatus, PurchaseStatus, ExpenseStatus, LoanStatus) with inverse relations.
+- **Referential actions:** `onDelete: Restrict` on core FKs; `onDelete: SetNull` on optional `Expense.purchase`.
+
+### Commands
+
+```bash
+# Validate schema
+pnpm prisma validate
+
+# Generate client
+pnpm prisma generate
+
+# Create migration (after schema changes)
+pnpm prisma migrate dev --name <migration_name>
+```
+
+---
 
 ## Project setup
 

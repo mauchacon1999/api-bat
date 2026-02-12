@@ -1,20 +1,23 @@
-
-
-model CategoryCosts {
-  id Int @id @default(autoincrement())
-  name String
+ 
+model CostCategory {
+  id        Int    @id @default(autoincrement())
+  name      String
   description String?
+  costs     Cost[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  costs Costs[]
+
+  @@map("cost_categories")
 }
 
-model Costs {
-  id Int @id @default(autoincrement())
+model Cost {
+  id         Int          @id @default(autoincrement())
   categoryId Int
-  category CategoryCosts @relation(fields: [categoryId], references: [id])
-  amount Float
-  date DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  category   CostCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  amount     Float
+  date       DateTime
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@map("costs")
 }

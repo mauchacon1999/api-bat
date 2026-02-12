@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "module": "Node16",
+    "moduleResolution": "node16",
+    "esModuleInterop": true,
+    "strictNullChecks": true,
+    "skipLibCheck": true,
+    "outDir": "../dist/prisma",
+    "rootDir": "."
+  },
+  "include": ["seed.ts"],
+  "references": [{ "path": ".." }]
+}

@@ -1,16 +1,42 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
- 
- 
 model Farm {
-  id Int @id @default(autoincrement())
-  name String
-  address String?
-  phone String?
+  id        Int      @id @default(autoincrement())
+  name      String
+  location  String?
+  phone     String?
+  lots      Lot[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("farms")
 }
 
+model LotStatus {
+  id        Int      @id @default(autoincrement())
+  name      String
+  description String?
+  lots      Lot[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("lot_statuses")
+}
+
+model Lot {
+  id           Int       @id @default(autoincrement())
+  farmId       Int
+  farm         Farm      @relation(fields: [farmId], references: [id], onDelete: Restrict)
+  statusId     Int
+  status       LotStatus @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  entryWeight  Float     
+  totalCost    Float     
+  date         DateTime
+  animals      Animal[]
+  expenses     Expense[]
+  loans        Loan[]
+  lotSales     LotSale[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("lots")
+}
